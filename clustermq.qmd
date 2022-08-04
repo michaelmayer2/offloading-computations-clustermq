@@ -1,0 +1,102 @@
+---
+title: "Offloading Computations to a HPC cluster via clustermq"
+author: "Michael Mayer"
+format: pdf
+editor: visual
+---
+
+## ClusterMQ
+
+### Pre-requisite
+
+-   RSW node configured to be a submit node to the HPC cluster
+
+-   RSW and HPC must share
+
+    -   R installation (version and location)
+
+    -   User IDs
+
+    -   location of code (e.g. home-directory)
+
+    -   OS dependency `zeromq` must be installed
+
+## Example
+
+Let's restore the `renv` first:
+
+```{r}
+install.packages("renv")
+renv::activate()
+renv::restore(prompt=FALSE)
+```
+
+Set options for clustermq
+
+```{r}
+options(clustermq.scheduler = "slurm",
+        clustermq.template = "./slurm.tmpl"
+)
+```
+
+### Load R packages
+
+```{r}
+library(clustermq)
+library(palmerpenguins)
+```
+
+### Write a first compute function
+
+```{r}
+# data
+x <- as.data.frame(penguins[c(4, 1)])
+
+compute <- function(i,x) {
+
+    ind <- sample(344, 344, replace = TRUE)
+    result1 <-
+      glm(x[ind, 2] ~ x[ind, 1], family = binomial(logit))
+    coefficients(result1)
+}
+
+compute(1,x)
+```
+
+### Write a loop
+
+```{r}
+library(foreach)
+computeloop <- function(trials, x) {
+  foreach(i = 1:trials, .combine = rbind) %do% {
+    compute(i, x)
+  }
+}
+```
+
+Run 100 & 1000 trials
+
+```{r}
+system.time(res <- computeloop(100, x))
+system.time(res <- computeloop(1000, x))
+```
+
+Looks like 10 000 trials will take short of 30 seconds.
+
+Could we do any better via any of the apply functions ?
+
+```{r}
+system.time(lapply(1:1000,compute,x=x))
+```
+
+This is only marginally faster than the `foreach` loop.
+
+Let's make this faster
+
+```{r}
+trials <- 10000
+n_jobs <- 8
+chunk_size <- trials/n_jobs/100
+system.time(res <- Q(compute, i=1:trials ,const=list(x=x), 
+                     n_jobs=n_jobs, log_worker = TRUE, chunk_size=chunk_size))
+```
