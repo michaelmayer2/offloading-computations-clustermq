@@ -31,7 +31,7 @@ renv::activate()
 renv::restore(prompt=FALSE)
 ```
 
-Set options for clustermq
+Set options for clustermq. Here we are using the templates for SLURM. `clustermq`\`will auto-detect the available scheduler and use internal templates by default. Due to our usage of the opinionated R installation provided by RStudio we need to slightly modify the template and hence link to our own template.
 
 ```{r}
 options(clustermq.scheduler = "slurm",
