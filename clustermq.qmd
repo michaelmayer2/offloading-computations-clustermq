@@ -60,7 +60,7 @@ compute <- function(i,x) {
     coefficients(result1)
 }
 
-compute(1,x)
+system.time(res<-compute(1,x))
 ```
 
 ### Write a loop
@@ -81,9 +81,9 @@ system.time(res <- computeloop(100, x))
 system.time(res <- computeloop(1000, x))
 ```
 
-Looks like 10 000 trials will take short of 30 seconds.
+We are scaling linear to the number of trials.
 
-Could we do any better via any of the apply functions ?
+Could we do any better via any of the apply functions instead of a \`foreach\` loop ?
 
 ```{r}
 system.time(lapply(1:1000,compute,x=x))
@@ -91,12 +91,55 @@ system.time(lapply(1:1000,compute,x=x))
 
 This is only marginally faster than the `foreach` loop.
 
-Let's make this faster
+Let's make this faster and go straight to 100 000.
 
 ```{r}
-trials <- 10000
-n_jobs <- 8
-chunk_size <- trials/n_jobs/100
+trials <- 100000
+n_jobs <- 10
+chunk_size <- trials/n_jobs/2
 system.time(res <- Q(compute, i=1:trials ,const=list(x=x), 
-                     n_jobs=n_jobs, log_worker = TRUE, chunk_size=chunk_size))
+                     n_jobs=n_jobs, log_worker = FALSE, chunk_size=chunk_size))
 ```
+
+### Alternative approach
+
+One also can register a parallel backend up-front
+
+```{r}
+# Register parallel backend to foreach
+register_dopar_cmq(
+  n_jobs = n_jobs,
+  log_worker = FALSE,
+  chunk_size = chunk_size
+)
+
+```
+
+and then define a parallel compute loop using the `%dopar%`\`directive of `foreach`\`.
+
+```{r}
+computepar <- function(trials, n_jobs,x) {
+  foreach(
+    i = 1:trials, .combine = rbind
+  ) %dopar% {
+    ind <- sample(344, 344, replace = TRUE)
+    result1 <-
+      glm(x[ind, 2] ~ x[ind, 1], family = binomial(logit))
+    coefficients(result1)
+  }
+}
+```
+
+and run this function
+
+```{r}
+system.time(res<-computepar(trials, n_jobs,x))
+```
+
+## Summary
+
+We showed a way how to offload computations to a compute backend via `clustermq`.
+
+With the example chosen, we were able to reduce the anticipated compute time of a for loop from 270 to 27 seconds whilst using 10 cores instead of 1. This is almost ideal speed-up and shows the efficiency of `clustermq` when it comes to communication.
+
+If one were to run the same for only 10 000 trials, the speed-up would be only 5x as then the overhead (job submission, collecting results, ...) become more dominant.
